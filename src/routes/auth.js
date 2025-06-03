@@ -21,6 +21,36 @@ function createToken(user) {
   );
 }
 
+function setAuthCookie(res, token) {
+  res.cookie("simpleauthx_token", token, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: config.env === "production",
+    path: "/",
+    maxAge: 7 * 24 * 60 * 60 * 1000,
+  });
+}
+
+function resolveSafeNext(nextValue) {
+  const next = String(nextValue || "").trim();
+  if (!next) {
+    return null;
+  }
+  if (!next.startsWith("/") || next.startsWith("//")) {
+    return null;
+  }
+  return next;
+}
+
+router.get("/login", (req, res) => {
+  const next = resolveSafeNext(req.query.next);
+  return res.status(401).json({
+    message: "Login required",
+    login_endpoint: "/auth/login",
+    next,
+  });
+});
+
 router.post("/register", async (req, res) => {
   try {
     const email = String(req.body.email || "").trim().toLowerCase();
@@ -51,6 +81,7 @@ router.post("/register", async (req, res) => {
       .returning(["id", "email", "name", "created_at"]);
 
     const token = createToken(createdUser);
+    setAuthCookie(res, token);
 
     return res.status(201).json({
       user: createdUser,
@@ -83,6 +114,12 @@ router.post("/login", async (req, res) => {
     }
 
     const token = createToken(user);
+    setAuthCookie(res, token);
+
+    const next = resolveSafeNext(req.query.next || req.body.next);
+    if (next) {
+      return res.redirect(302, next);
+    }
 
     return res.json({
       user: {
